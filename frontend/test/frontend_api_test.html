@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>前端API集成测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #4a72ff;
+            padding-bottom: 10px;
+        }
+        .test-item {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border-left: 4px solid #4a72ff;
+        }
+        .test-item.success {
+            border-left-color: #28a745;
+            background: #d4edda;
+        }
+        .test-item.error {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+        }
+        .test-item.loading {
+            border-left-color: #ffc107;
+            background: #fff3cd;
+        }
+        button {
+            background: #4a72ff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #3d5fe0;
+        }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .input-group {
+            margin: 10px 0;
+        }
+        .input-group label {
+            display: inline-block;
+            width: 120px;
+            font-weight: bold;
+        }
+        .input-group input {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 200px;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .status.success { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .status.loading { background: #fff3cd; color: #856404; }
+    </style>
+</head>
+<body>
+    <h1>🚀 前端-后端API集成测试</h1>
+    <p>这个页面用于测试前端API服务与后端FastAPI的集成情况</p>
+
+    <div class="container">
+        <h2>📋 测试状态</h2>
+        <div id="overall-status" class="status loading">准备中...</div>
+        <div class="log" id="test-log"></div>
+    </div>
+
+    <div class="container">
+        <h2>🔐 用户认证测试</h2>
+        <div class="test-section">
+            <div class="input-group">
+                <label>用户名:</label>
+                <input type="text" id="username" value="testuser" placeholder="输入用户名">
+            </div>
+            <div class="input-group">
+                <label>密码:</label>
+                <input type="password" id="password" value="testpass" placeholder="输入密码">
+            </div>
+            <button onclick="testUserAuth()">测试用户认证</button>
+            <button onclick="testUserUpdate()">测试用户更新</button>
+            <button onclick="testUserDelete()">测试用户删除</button>
+        </div>
+        <div id="user-tests"></div>
+    </div>
+
+    <div class="container">
+        <h2>💬 会话管理测试</h2>
+        <div class="test-section">
+            <button onclick="testConversationCRUD()">测试会话CRUD</button>
+            <button onclick="testConversationUpdate()">测试会话标题更新</button>
+        </div>
+        <div id="conversation-tests"></div>
+    </div>
+
+    <div class="container">
+        <h2>📝 消息管理测试</h2>
+        <div class="test-section">
+            <div class="input-group">
+                <label>消息内容:</label>
+                <input type="text" id="message-content" value="你好，这是一条测试消息" placeholder="输入消息内容">
+            </div>
+            <button onclick="testMessageCRUD()">测试消息CRUD</button>
+            <button onclick="testStreamMessage()">测试流式消息</button>
+        </div>
+        <div id="message-tests"></div>
+    </div>
+
+    <div class="container">
+        <h2>🔄 完整流程测试</h2>
+        <div class="test-section">
+            <button onclick="testCompleteFlow()">测试完整聊天流程</button>
+            <button onclick="clearAllTests()">清除所有测试</button>
+        </div>
+        <div id="flow-tests"></div>
+    </div>
+
+    <script>
+        // API配置
+        const API_BASE_URL = 'http://localhost:8000/api';
+        let currentToken = '';
+        let currentUserId = null;
+        let currentConversationId = null;
+        let currentMessageId = null;
+
+        // 日志函数
+        function log(message, type = 'info') {
+            const logElement = document.getElementById('test-log');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `[${timestamp}] ${message}`;
+            logEntry.style.color = type === 'error' ? '#dc3545' : type === 'success' ? '#28a745' : '#333';
+            logElement.appendChild(logEntry);
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        // 更新测试状态
+        function updateTestStatus(testId, status, message) {
+            const testElement = document.getElementById(testId);
+            if (testElement) {
+                testElement.className = `test-item ${status}`;
+                testElement.innerHTML = message;
+            }
+        }
+
+        // 创建测试项
+        function createTestItem(containerId, testId, message, status = 'loading') {
+            const container = document.getElementById(containerId);
+            const testElement = document.createElement('div');
+            testElement.id = testId;
+            testElement.className = `test-item ${status}`;
+            testElement.innerHTML = message;
+            container.appendChild(testElement);
+            return testElement;
+        }
+
+        // 通用API调用函数
+        async function apiCall(method, endpoint, data = null, useAuth = true) {
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            
+            if (useAuth && currentToken) {
+                headers['Authorization'] = `Bearer ${currentToken}`;
+            }
+
+            const config = {
+                method,
+                headers
+            };
+
+            if (data) {
+                config.body = JSON.stringify(data);
+            }
+
+            const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.detail || `HTTP ${response.status}`);
+            }
+
+            return result;
+        }
+
+        // 用户认证测试
+        async function testUserAuth() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                // 1. 测试用户注册
+                createTestItem('user-tests', 'user-register', '测试用户注册...', 'loading');
+                log('开始测试用户注册...');
+                
+                try {
+                    await apiCall('POST', '/users/register', { username, password }, false);
+                    updateTestStatus('user-register', 'success', '✅ 用户注册成功');
+                    log('用户注册成功', 'success');
+                } catch (error) {
+                    if (error.message.includes('用户名已存在')) {
+                        updateTestStatus('user-register', 'success', '✅ 用户已存在（正常）');
+                        log('用户已存在，继续测试', 'info');
+                    } else {
+                        throw error;
+                    }
+                }
+
+                // 2. 测试用户登录
+                createTestItem('user-tests', 'user-login', '测试用户登录...', 'loading');
+                log('开始测试用户登录...');
+                
+                const loginResult = await apiCall('POST', '/users/login', { username, password }, false);
+                currentToken = loginResult.access_token;
+                updateTestStatus('user-login', 'success', '✅ 用户登录成功');
+                log('用户登录成功，获取到token', 'success');
+
+                // 3. 测试获取用户信息
+                createTestItem('user-tests', 'user-info', '测试获取用户信息...', 'loading');
+                log('开始测试获取用户信息...');
+                
+                const userInfo = await apiCall('GET', '/users/me');
+                currentUserId = userInfo.id;
+                updateTestStatus('user-info', 'success', `✅ 获取用户信息成功: ${userInfo.username}`);
+                log(`获取用户信息成功: ${userInfo.username}`, 'success');
+
+            } catch (error) {
+                log(`用户认证测试失败: ${error.message}`, 'error');
+                updateTestStatus('user-register', 'error', `❌ 注册失败: ${error.message}`);
+                updateTestStatus('user-login', 'error', `❌ 登录失败: ${error.message}`);
+                updateTestStatus('user-info', 'error', `❌ 获取用户信息失败: ${error.message}`);
+            }
+        }
+
+        // 用户更新测试
+        async function testUserUpdate() {
+            if (!currentToken) {
+                log('请先进行用户认证测试', 'error');
+                return;
+            }
+
+            try {
+                createTestItem('user-tests', 'user-update', '测试用户信息更新...', 'loading');
+                log('开始测试用户信息更新...');
+                
+                const updateData = {
+                    username: 'updateduser',
+                    password: 'newpassword'
+                };
+                
+                const result = await apiCall('PUT', '/users/me', updateData);
+                updateTestStatus('user-update', 'success', '✅ 用户信息更新成功');
+                log('用户信息更新成功', 'success');
+                
+                // 更新token
+                if (result.access_token) {
+                    currentToken = result.access_token;
+                    log('Token已更新', 'info');
+                }
+
+            } catch (error) {
+                log(`用户更新测试失败: ${error.message}`, 'error');
+                updateTestStatus('user-update', 'error', `❌ 更新失败: ${error.message}`);
+            }
+        }
+
+        // 用户删除测试
+        async function testUserDelete() {
+            if (!currentToken) {
+                log('请先进行用户认证测试', 'error');
+                return;
+            }
+
+            try {
+                createTestItem('user-tests', 'user-delete', '测试用户账户删除...', 'loading');
+                log('开始测试用户账户删除...');
+                
+                await apiCall('DELETE', '/users/me');
+                updateTestStatus('user-delete', 'success', '✅ 用户账户删除成功');
+                log('用户账户删除成功', 'success');
+                
+                // 清除认证状态
+                currentToken = '';
+                currentUserId = null;
+
+            } catch (error) {
+                log(`用户删除测试失败: ${error.message}`, 'error');
+                updateTestStatus('user-delete', 'error', `❌ 删除失败: ${error.message}`);
+            }
+        }
+
+        // 会话CRUD测试
+        async function testConversationCRUD() {
+            if (!currentToken) {
+                log('请先进行用户认证测试', 'error');
+                return;
+            }
+
+            try {
+                // 1. 创建会话
+                createTestItem('conversation-tests', 'conv-create', '测试创建会话...', 'loading');
+                log('开始测试创建会话...');
+                
+                const conversation = await apiCall('POST', '/conversations/', { title: '测试会话' });
+                currentConversationId = conversation.id;
+                updateTestStatus('conv-create', 'success', `✅ 会话创建成功，ID: ${conversation.id}`);
+                log(`会话创建成功，ID: ${conversation.id}`, 'success');
+
+                // 2. 获取会话列表
+                createTestItem('conversation-tests', 'conv-list', '测试获取会话列表...', 'loading');
+                log('开始测试获取会话列表...');
+                
+                const conversations = await apiCall('GET', '/conversations/');
+                updateTestStatus('conv-list', 'success', `✅ 获取会话列表成功，共 ${conversations.conversations.length} 个会话`);
+                log(`获取会话列表成功，共 ${conversations.conversations.length} 个会话`, 'success');
+
+                // 3. 获取特定会话
+                createTestItem('conversation-tests', 'conv-get', '测试获取特定会话...', 'loading');
+                log('开始测试获取特定会话...');
+                
+                const specificConv = await apiCall('GET', `/conversations/${currentConversationId}`);
+                updateTestStatus('conv-get', 'success', `✅ 获取会话信息成功: ${specificConv.title}`);
+                log(`获取会话信息成功: ${specificConv.title}`, 'success');
+
+                // 4. 删除会话
+                createTestItem('conversation-tests', 'conv-delete', '测试删除会话...', 'loading');
+                log('开始测试删除会话...');
+                
+                await apiCall('DELETE', `/conversations/${currentConversationId}`);
+                updateTestStatus('conv-delete', 'success', '✅ 会话删除成功');
+                log('会话删除成功', 'success');
+                
+                currentConversationId = null;
+
+            } catch (error) {
+                log(`会话CRUD测试失败: ${error.message}`, 'error');
+                updateTestStatus('conv-create', 'error', `❌ 创建失败: ${error.message}`);
+                updateTestStatus('conv-list', 'error', `❌ 获取列表失败: ${error.message}`);
+                updateTestStatus('conv-get', 'error', `❌ 获取特定会话失败: ${error.message}`);
+                updateTestStatus('conv-delete', 'error', `❌ 删除失败: ${error.message}`);
+            }
+        }
+
+        // 会话标题更新测试
+        async function testConversationUpdate() {
+            if (!currentToken) {
+                log('请先进行用户认证测试', 'error');
+                return;
+            }
+
+            try {
+                // 先创建会话
+                const conversation = await apiCall('POST', '/conversations/', { title: '原始标题' });
+                currentConversationId = conversation.id;
+
+                createTestItem('conversation-tests', 'conv-update', '测试更新会话标题...', 'loading');
+                log('开始测试更新会话标题...');
+                
+                const updatedConv = await apiCall('PUT', `/conversations/${currentConversationId}`, { title: '更新后的标题' });
+                updateTestStatus('conv-update', 'success', `✅ 会话标题更新成功: ${updatedConv.title}`);
+                log(`会话标题更新成功: ${updatedConv.title}`, 'success');
+
+                // 清理
+                await apiCall('DELETE', `/conversations/${currentConversationId}`);
+                currentConversationId = null;
+
+            } catch (error) {
+                log(`会话更新测试失败: ${error.message}`, 'error');
+                updateTestStatus('conv-update', 'error', `❌ 更新失败: ${error.message}`);
+            }
+        }
+
+        // 消息CRUD测试
+        async function testMessageCRUD() {
+            if (!currentToken) {
+                log('请先进行用户认证测试', 'error');
+                return;
+            }
+
+            try {
+                // 先创建会话
+                const conversation = await apiCall('POST', '/conversations/', { title: '消息测试会话' });
+                currentConversationId = conversation.id;
+
+                // 1. 发送消息
+                createTestItem('message-tests', 'msg-send', '测试发送消息...', 'loading');
+                log('开始测试发送消息...');
+                
+                const messageContent = document.getElementById('message-content').value;
+                const messageData = {
+                    content: messageContent,
+                    conversation_id: currentConversationId,
+                    enable_search: false,
+                    enable_thinking: false
+                };
+                
+                // 注意：这里我们只测试API调用，不处理流式响应
+                const response = await fetch(`${API_BASE_URL}/messages/send`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentToken}`
+                    },
+                    body: JSON.stringify(messageData)
+                });
+
+                if (response.ok) {
+                    updateTestStatus('msg-send', 'success', '✅ 消息发送成功（流式响应）');
+                    log('消息发送成功（流式响应）', 'success');
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                // 2. 获取消息列表
+                createTestItem('message-tests', 'msg-list', '测试获取消息列表...', 'loading');
+                log('开始测试获取消息列表...');
+                
+                const messages = await apiCall('GET', `/messages/conversation/${currentConversationId}`);
+                updateTestStatus('msg-list', 'success', `✅ 获取消息列表成功，共 ${messages.messages.length} 条消息`);
+                log(`获取消息列表成功，共 ${messages.messages.length} 条消息`, 'success');
+
+                // 3. 更新消息内容（只更新用户消息）
+                const userMessage = messages.messages.find(msg => msg.role === 'user');
+                if (userMessage) {
+                    currentMessageId = userMessage.id;
+                    createTestItem('message-tests', 'msg-update', '测试更新消息内容...', 'loading');
+                    log('开始测试更新消息内容...');
+                    
+                    const updatedMessage = await apiCall('PUT', `/messages/${currentMessageId}`, { content: '这是更新后的消息内容' });
+                    updateTestStatus('msg-update', 'success', `✅ 消息内容更新成功: ${updatedMessage.content}`);
+                    log(`消息内容更新成功: ${updatedMessage.content}`, 'success');
+                }
+
+                // 4. 删除消息
+                if (currentMessageId) {
+                    createTestItem('message-tests', 'msg-delete', '测试删除消息...', 'loading');
+                    log('开始测试删除消息...');
+                    
+                    await apiCall('DELETE', `/messages/${currentMessageId}`);
+                    updateTestStatus('msg-delete', 'success', '✅ 消息删除成功');
+                    log('消息删除成功', 'success');
+                }
+
+                // 清理会话
+                await apiCall('DELETE', `/conversations/${currentConversationId}`);
+                currentConversationId = null;
+                currentMessageId = null;
+
+            } catch (error) {
+                log(`消息CRUD测试失败: ${error.message}`, 'error');
+                updateTestStatus('msg-send', 'error', `❌ 发送失败: ${error.message}`);
+                updateTestStatus('msg-list', 'error', `❌ 获取列表失败: ${error.message}`);
+                updateTestStatus('msg-update', 'error', `❌ 更新失败: ${error.message}`);
+                updateTestStatus('msg-delete', 'error', `❌ 删除失败: ${error.message}`);
+            }
+        }
+
+        // 流式消息测试
+        async function testStreamMessage() {
+            if (!currentToken) {
+                log('请先进行用户认证测试', 'error');
+                return;
+            }
+
+            try {
+                // 先创建会话
+                const conversation = await apiCall('POST', '/conversations/', { title: '流式消息测试会话' });
+                currentConversationId = conversation.id;
+
+                createTestItem('message-tests', 'msg-stream', '测试流式消息发送...', 'loading');
+                log('开始测试流式消息发送...');
+                
+                const messageContent = document.getElementById('message-content').value;
+                const messageData = {
+                    content: messageContent,
+                    conversation_id: currentConversationId,
+                    enable_search: false,
+                    enable_thinking: true
+                };
+                
+                const response = await fetch(`${API_BASE_URL}/messages/send`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentToken}`
+                    },
+                    body: JSON.stringify(messageData)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let chunkCount = 0;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    
+                    if (done) {
+                        updateTestStatus('msg-stream', 'success', `✅ 流式消息发送完成，共接收 ${chunkCount} 个数据块`);
+                        log(`流式消息发送完成，共接收 ${chunkCount} 个数据块`, 'success');
+                        break;
+                    }
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                chunkCount++;
+                                log(`接收到数据块: ${data.type}`, 'info');
+                            } catch (e) {
+                                log(`解析数据块失败: ${e.message}`, 'error');
+                            }
+                        }
+                    }
+                }
+
+                // 清理会话
+                await apiCall('DELETE', `/conversations/${currentConversationId}`);
+                currentConversationId = null;
+
+            } catch (error) {
+                log(`流式消息测试失败: ${error.message}`, 'error');
+                updateTestStatus('msg-stream', 'error', `❌ 流式消息失败: ${error.message}`);
+            }
+        }
+
+        // 完整流程测试
+        async function testCompleteFlow() {
+            log('开始完整流程测试...', 'info');
+            
+            try {
+                // 1. 用户认证
+                await testUserAuth();
+                if (!currentToken) {
+                    throw new Error('用户认证失败，无法继续测试');
+                }
+
+                // 2. 会话管理
+                await testConversationCRUD();
+                if (!currentConversationId) {
+                    throw new Error('会话管理失败，无法继续测试');
+                }
+
+                // 3. 消息管理
+                await testMessageCRUD();
+
+                // 4. 流式消息
+                await testStreamMessage();
+
+                log('完整流程测试成功！', 'success');
+                updateTestStatus('overall-status', 'success', '所有测试通过');
+
+            } catch (error) {
+                log(`完整流程测试失败: ${error.message}`, 'error');
+                updateTestStatus('overall-status', 'error', '测试失败');
+            }
+        }
+
+        // 清除所有测试
+        function clearAllTests() {
+            document.getElementById('user-tests').innerHTML = '';
+            document.getElementById('conversation-tests').innerHTML = '';
+            document.getElementById('message-tests').innerHTML = '';
+            document.getElementById('flow-tests').innerHTML = '';
+            document.getElementById('test-log').innerHTML = '';
+            updateTestStatus('overall-status', 'loading', '准备中...');
+            
+            currentToken = '';
+            currentUserId = null;
+            currentConversationId = null;
+            currentMessageId = null;
+            
+            log('所有测试已清除', 'info');
+        }
+
+        // 页面加载完成后的初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            log('前端API集成测试页面已加载', 'info');
+            log('请确保后端服务运行在 http://localhost:8000', 'info');
+            log('点击各个测试按钮开始测试', 'info');
+        });
+    </script>
+</body>
+</html>

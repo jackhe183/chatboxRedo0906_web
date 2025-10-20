@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API集成测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            margin: 20px 0;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-section h2 {
+            color: #333;
+            border-bottom: 2px solid #4a72ff;
+            padding-bottom: 10px;
+        }
+        .test-button {
+            background: #4a72ff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .test-button:hover {
+            background: #3d5fe0;
+        }
+        .test-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-item {
+            margin: 2px 0;
+            padding: 2px 0;
+        }
+        .log-item.success { color: #28a745; }
+        .log-item.error { color: #dc3545; }
+        .log-item.info { color: #333; }
+        .form-group {
+            margin: 10px 0;
+        }
+        .form-group input {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 200px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .status.success { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .status.info { background: #d1ecf1; color: #0c5460; }
+    </style>
+</head>
+<body>
+    <h1>🚀 API集成测试页面</h1>
+    
+    <!-- 用户认证测试 -->
+    <div class="test-section">
+        <h2>👤 用户认证测试</h2>
+        <div class="form-group">
+            <input id="username" type="text" placeholder="用户名" value="testuser">
+            <input id="password" type="password" placeholder="密码" value="testpass">
+        </div>
+        <button class="test-button" onclick="testRegister()">注册用户</button>
+        <button class="test-button" onclick="testLogin()">登录</button>
+        <button class="test-button" onclick="testGetUser()">获取用户信息</button>
+        <button class="test-button" onclick="testUpdateUser()">更新用户信息</button>
+        <button class="test-button" onclick="testDeleteUser()">删除用户</button>
+        <div id="authStatus" class="status info">未登录</div>
+    </div>
+
+    <!-- 会话管理测试 -->
+    <div class="test-section">
+        <h2>💬 会话管理测试</h2>
+        <div class="form-group">
+            <input id="conversationTitle" type="text" placeholder="会话标题" value="测试会话">
+        </div>
+        <button class="test-button" onclick="testCreateConversation()">创建会话</button>
+        <button class="test-button" onclick="testGetConversations()">获取会话列表</button>
+        <button class="test-button" onclick="testUpdateConversation()">更新会话标题</button>
+        <button class="test-button" onclick="testDeleteConversation()">删除会话</button>
+        <div id="conversationStatus" class="status info">无会话</div>
+    </div>
+
+    <!-- 消息管理测试 -->
+    <div class="test-section">
+        <h2>📝 消息管理测试</h2>
+        <div class="form-group">
+            <input id="messageContent" type="text" placeholder="消息内容" value="你好，这是一条测试消息">
+        </div>
+        <button class="test-button" onclick="testSendMessage()">发送消息</button>
+        <button class="test-button" onclick="testGetMessages()">获取消息列表</button>
+        <button class="test-button" onclick="testUpdateMessage()">更新消息内容</button>
+        <button class="test-button" onclick="testDeleteMessage()">删除消息</button>
+        <div id="messageStatus" class="status info">无消息</div>
+    </div>
+
+    <!-- 流式消息测试 -->
+    <div class="test-section">
+        <h2>🌊 流式消息测试</h2>
+        <div class="form-group">
+            <input id="streamMessage" type="text" placeholder="流式消息内容" value="请写一首关于春天的诗">
+            <label><input type="checkbox" id="enableSearch"> 启用搜索</label>
+            <label><input type="checkbox" id="enableThinking"> 启用思考</label>
+        </div>
+        <button class="test-button" onclick="testStreamMessage()">发送流式消息</button>
+        <div id="streamStatus" class="status info">准备就绪</div>
+        <div id="streamContent" class="log"></div>
+    </div>
+
+    <!-- 操作日志 -->
+    <div class="test-section">
+        <h2>📋 操作日志</h2>
+        <button class="test-button" onclick="clearLogs()">清除日志</button>
+        <div id="logs" class="log"></div>
+    </div>
+
+    <script>
+        // API配置
+        const API_BASE_URL = 'http://localhost:8000/api';
+        let currentToken = localStorage.getItem('token');
+        let currentUserId = null;
+        let currentConversationId = null;
+        let currentMessageId = null;
+
+        // 日志函数
+        function addLog(message, type = 'info') {
+            const logs = document.getElementById('logs');
+            const logItem = document.createElement('div');
+            logItem.className = `log-item ${type}`;
+            logItem.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logs.insertBefore(logItem, logs.firstChild);
+            
+            // 限制日志数量
+            while (logs.children.length > 100) {
+                logs.removeChild(logs.lastChild);
+            }
+        }
+
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+        }
+
+        // API请求函数
+        async function apiRequest(endpoint, options = {}) {
+            const url = `${API_BASE_URL}${endpoint}`;
+            const config = {
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                },
+                ...options
+            };
+
+            if (currentToken) {
+                config.headers['Authorization'] = `Bearer ${currentToken}`;
+            }
+
+            try {
+                const response = await fetch(url, config);
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                return await response.json();
+            } catch (error) {
+                addLog(`API请求失败: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        // 用户认证测试
+        async function testRegister() {
+            try {
+                const username = document.getElementById('username').value;
+                const password = document.getElementById('password').value;
+                
+                addLog('开始用户注册...', 'info');
+                const result = await apiRequest('/users/register', {
+                    method: 'POST',
+                    body: JSON.stringify({ username, password })
+                });
+                
+                addLog('用户注册成功', 'success');
+                document.getElementById('authStatus').textContent = '注册成功';
+                document.getElementById('authStatus').className = 'status success';
+            } catch (error) {
+                addLog(`用户注册失败: ${error.message}`, 'error');
+                document.getElementById('authStatus').textContent = '注册失败';
+                document.getElementById('authStatus').className = 'status error';
+            }
+        }
+
+        async function testLogin() {
+            try {
+                const username = document.getElementById('username').value;
+                const password = document.getElementById('password').value;
+                
+                addLog('开始用户登录...', 'info');
+                const result = await apiRequest('/users/login', {
+                    method: 'POST',
+                    body: JSON.stringify({ username, password })
+                });
+                
+                currentToken = result.access_token;
+                localStorage.setItem('token', currentToken);
+                
+                addLog('用户登录成功', 'success');
+                document.getElementById('authStatus').textContent = '登录成功';
+                document.getElementById('authStatus').className = 'status success';
+            } catch (error) {
+                addLog(`用户登录失败: ${error.message}`, 'error');
+                document.getElementById('authStatus').textContent = '登录失败';
+                document.getElementById('authStatus').className = 'status error';
+            }
+        }
+
+        async function testGetUser() {
+            try {
+                addLog('开始获取用户信息...', 'info');
+                const result = await apiRequest('/users/me');
+                
+                currentUserId = result.id;
+                addLog(`用户信息获取成功: ${result.username} (ID: ${result.id})`, 'success');
+                document.getElementById('authStatus').textContent = `已登录: ${result.username}`;
+                document.getElementById('authStatus').className = 'status success';
+            } catch (error) {
+                addLog(`获取用户信息失败: ${error.message}`, 'error');
+                document.getElementById('authStatus').textContent = '获取用户信息失败';
+                document.getElementById('authStatus').className = 'status error';
+            }
+        }
+
+        async function testUpdateUser() {
+            try {
+                const newUsername = prompt('请输入新的用户名:', 'updateduser');
+                if (!newUsername) return;
+                
+                addLog('开始更新用户信息...', 'info');
+                const result = await apiRequest('/users/me', {
+                    method: 'PUT',
+                    body: JSON.stringify({ username: newUsername })
+                });
+                
+                addLog('用户信息更新成功', 'success');
+                document.getElementById('authStatus').textContent = `已更新: ${newUsername}`;
+                document.getElementById('authStatus').className = 'status success';
+            } catch (error) {
+                addLog(`更新用户信息失败: ${error.message}`, 'error');
+                document.getElementById('authStatus').textContent = '更新用户信息失败';
+                document.getElementById('authStatus').className = 'status error';
+            }
+        }
+
+        async function testDeleteUser() {
+            if (!confirm('确定要删除用户账户吗？此操作不可恢复！')) return;
+            
+            try {
+                addLog('开始删除用户账户...', 'info');
+                await apiRequest('/users/me', { method: 'DELETE' });
+                
+                currentToken = null;
+                currentUserId = null;
+                localStorage.removeItem('token');
+                
+                addLog('用户账户删除成功', 'success');
+                document.getElementById('authStatus').textContent = '账户已删除';
+                document.getElementById('authStatus').className = 'status info';
+            } catch (error) {
+                addLog(`删除用户账户失败: ${error.message}`, 'error');
+                document.getElementById('authStatus').textContent = '删除用户账户失败';
+                document.getElementById('authStatus').className = 'status error';
+            }
+        }
+
+        // 会话管理测试
+        async function testCreateConversation() {
+            try {
+                const title = document.getElementById('conversationTitle').value;
+                
+                addLog('开始创建会话...', 'info');
+                const result = await apiRequest('/conversations/', {
+                    method: 'POST',
+                    body: JSON.stringify({ title })
+                });
+                
+                currentConversationId = result.id;
+                addLog(`会话创建成功: ${result.title} (ID: ${result.id})`, 'success');
+                document.getElementById('conversationStatus').textContent = `当前会话: ${result.title}`;
+                document.getElementById('conversationStatus').className = 'status success';
+            } catch (error) {
+                addLog(`创建会话失败: ${error.message}`, 'error');
+                document.getElementById('conversationStatus').textContent = '创建会话失败';
+                document.getElementById('conversationStatus').className = 'status error';
+            }
+        }
+
+        async function testGetConversations() {
+            try {
+                addLog('开始获取会话列表...', 'info');
+                const result = await apiRequest('/conversations/');
+                
+                const conversations = result.conversations || result;
+                addLog(`获取会话列表成功，共 ${conversations.length} 个会话`, 'success');
+                document.getElementById('conversationStatus').textContent = `共 ${conversations.length} 个会话`;
+                document.getElementById('conversationStatus').className = 'status success';
+            } catch (error) {
+                addLog(`获取会话列表失败: ${error.message}`, 'error');
+                document.getElementById('conversationStatus').textContent = '获取会话列表失败';
+                document.getElementById('conversationStatus').className = 'status error';
+            }
+        }
+
+        async function testUpdateConversation() {
+            if (!currentConversationId) {
+                alert('请先创建一个会话');
+                return;
+            }
+            
+            try {
+                const newTitle = prompt('请输入新的会话标题:', '更新后的标题');
+                if (!newTitle) return;
+                
+                addLog('开始更新会话标题...', 'info');
+                await apiRequest(`/conversations/${currentConversationId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ title: newTitle })
+                });
+                
+                addLog('会话标题更新成功', 'success');
+                document.getElementById('conversationStatus').textContent = `当前会话: ${newTitle}`;
+                document.getElementById('conversationStatus').className = 'status success';
+            } catch (error) {
+                addLog(`更新会话标题失败: ${error.message}`, 'error');
+                document.getElementById('conversationStatus').textContent = '更新会话标题失败';
+                document.getElementById('conversationStatus').className = 'status error';
+            }
+        }
+
+        async function testDeleteConversation() {
+            if (!currentConversationId) {
+                alert('请先创建一个会话');
+                return;
+            }
+            
+            if (!confirm('确定要删除这个会话吗？')) return;
+            
+            try {
+                addLog('开始删除会话...', 'info');
+                await apiRequest(`/conversations/${currentConversationId}`, { method: 'DELETE' });
+                
+                currentConversationId = null;
+                addLog('会话删除成功', 'success');
+                document.getElementById('conversationStatus').textContent = '会话已删除';
+                document.getElementById('conversationStatus').className = 'status info';
+            } catch (error) {
+                addLog(`删除会话失败: ${error.message}`, 'error');
+                document.getElementById('conversationStatus').textContent = '删除会话失败';
+                document.getElementById('conversationStatus').className = 'status error';
+            }
+        }
+
+        // 消息管理测试
+        async function testSendMessage() {
+            if (!currentConversationId) {
+                alert('请先创建一个会话');
+                return;
+            }
+            
+            try {
+                const content = document.getElementById('messageContent').value;
+                
+                addLog('开始发送消息...', 'info');
+                const result = await apiRequest('/messages/send', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        content,
+                        conversation_id: currentConversationId,
+                        enable_search: false,
+                        enable_thinking: false
+                    })
+                });
+                
+                addLog('消息发送成功', 'success');
+                document.getElementById('messageStatus').textContent = '消息发送成功';
+                document.getElementById('messageStatus').className = 'status success';
+            } catch (error) {
+                addLog(`发送消息失败: ${error.message}`, 'error');
+                document.getElementById('messageStatus').textContent = '发送消息失败';
+                document.getElementById('messageStatus').className = 'status error';
+            }
+        }
+
+        async function testGetMessages() {
+            if (!currentConversationId) {
+                alert('请先创建一个会话');
+                return;
+            }
+            
+            try {
+                addLog('开始获取消息列表...', 'info');
+                const result = await apiRequest(`/messages/conversation/${currentConversationId}`);
+                
+                const messages = result.messages || result;
+                addLog(`获取消息列表成功，共 ${messages.length} 条消息`, 'success');
+                document.getElementById('messageStatus').textContent = `共 ${messages.length} 条消息`;
+                document.getElementById('messageStatus').className = 'status success';
+                
+                if (messages.length > 0) {
+                    currentMessageId = messages[messages.length - 1].id;
+                }
+            } catch (error) {
+                addLog(`获取消息列表失败: ${error.message}`, 'error');
+                document.getElementById('messageStatus').textContent = '获取消息列表失败';
+                document.getElementById('messageStatus').className = 'status error';
+            }
+        }
+
+        async function testUpdateMessage() {
+            if (!currentMessageId) {
+                alert('请先发送一条消息');
+                return;
+            }
+            
+            try {
+                const newContent = prompt('请输入新的消息内容:', '更新后的消息内容');
+                if (!newContent) return;
+                
+                addLog('开始更新消息内容...', 'info');
+                await apiRequest(`/messages/${currentMessageId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ content: newContent })
+                });
+                
+                addLog('消息内容更新成功', 'success');
+                document.getElementById('messageStatus').textContent = '消息内容更新成功';
+                document.getElementById('messageStatus').className = 'status success';
+            } catch (error) {
+                addLog(`更新消息内容失败: ${error.message}`, 'error');
+                document.getElementById('messageStatus').textContent = '更新消息内容失败';
+                document.getElementById('messageStatus').className = 'status error';
+            }
+        }
+
+        async function testDeleteMessage() {
+            if (!currentMessageId) {
+                alert('请先发送一条消息');
+                return;
+            }
+            
+            if (!confirm('确定要删除这条消息吗？')) return;
+            
+            try {
+                addLog('开始删除消息...', 'info');
+                await apiRequest(`/messages/${currentMessageId}`, { method: 'DELETE' });
+                
+                currentMessageId = null;
+                addLog('消息删除成功', 'success');
+                document.getElementById('messageStatus').textContent = '消息已删除';
+                document.getElementById('messageStatus').className = 'status info';
+            } catch (error) {
+                addLog(`删除消息失败: ${error.message}`, 'error');
+                document.getElementById('messageStatus').textContent = '删除消息失败';
+                document.getElementById('messageStatus').className = 'status error';
+            }
+        }
+
+        // 流式消息测试
+        async function testStreamMessage() {
+            if (!currentConversationId) {
+                alert('请先创建一个会话');
+                return;
+            }
+            
+            try {
+                const content = document.getElementById('streamMessage').value;
+                const enableSearch = document.getElementById('enableSearch').checked;
+                const enableThinking = document.getElementById('enableThinking').checked;
+                
+                addLog('开始发送流式消息...', 'info');
+                document.getElementById('streamContent').innerHTML = '';
+                document.getElementById('streamStatus').textContent = '正在发送...';
+                document.getElementById('streamStatus').className = 'status info';
+                
+                const response = await fetch(`${API_BASE_URL}/messages/send`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentToken}`
+                    },
+                    body: JSON.stringify({
+                        content,
+                        conversation_id: currentConversationId,
+                        enable_search: enableSearch,
+                        enable_thinking: enableThinking
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                handleStreamChunk(data);
+                            } catch (e) {
+                                console.error('解析流数据失败:', e);
+                            }
+                        }
+                    }
+                }
+
+                addLog('流式消息发送完成', 'success');
+                document.getElementById('streamStatus').textContent = '发送完成';
+                document.getElementById('streamStatus').className = 'status success';
+            } catch (error) {
+                addLog(`流式消息发送失败: ${error.message}`, 'error');
+                document.getElementById('streamStatus').textContent = '发送失败';
+                document.getElementById('streamStatus').className = 'status error';
+            }
+        }
+
+        function handleStreamChunk(chunk) {
+            const streamContent = document.getElementById('streamContent');
+            const logItem = document.createElement('div');
+            logItem.className = 'log-item info';
+            
+            switch (chunk.type) {
+                case 'conversation':
+                    logItem.textContent = `[会话] ID: ${chunk.conversation_id}`;
+                    break;
+                case 'message':
+                    logItem.textContent = `[消息] ID: ${chunk.message_id}`;
+                    break;
+                case 'content':
+                    logItem.textContent = `[内容] ${chunk.content}`;
+                    break;
+                case 'tool_start':
+                    logItem.textContent = `[工具开始] ${chunk.content}`;
+                    break;
+                case 'tool_end':
+                    logItem.textContent = `[工具结束] ${chunk.content}`;
+                    break;
+                case 'thinking':
+                    logItem.textContent = `[思考] ${chunk.content}`;
+                    break;
+                case 'error':
+                    logItem.textContent = `[错误] ${chunk.content}`;
+                    logItem.className = 'log-item error';
+                    break;
+                case 'done':
+                    logItem.textContent = `[完成] 消息发送完成`;
+                    logItem.className = 'log-item success';
+                    break;
+                default:
+                    logItem.textContent = `[未知] ${JSON.stringify(chunk)}`;
+            }
+            
+            streamContent.appendChild(logItem);
+            streamContent.scrollTop = streamContent.scrollHeight;
+        }
+
+        // 页面加载时检查登录状态
+        window.onload = function() {
+            if (currentToken) {
+                addLog('检测到已保存的token，尝试获取用户信息...', 'info');
+                testGetUser();
+            } else {
+                addLog('未检测到登录状态，请先登录', 'info');
+            }
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepSeek ChatBox Clone - Element Plus 重构版</title>
+    <!-- 引入 Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- 引入 Element Plus 样式 -->
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
+    <!-- 引入 Element Plus 组件库 -->
+    <script src="https://unpkg.com/element-plus"></script>
+    <!-- 引入 Element Plus 图标 -->
+    <script src="https://unpkg.com/@element-plus/icons-vue"></script>
+    <!-- 引入 Markdown 解析库 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
+</head>
+<body>
+
+<div id="app">
+    <el-config-provider>
+        <!-- 登录对话框 -->
+        <el-dialog v-model="showLoginDialog" :title="isLoginMode ? '登录' : '注册'" width="400px" :close-on-click-modal="false" :show-close="false">
+            <el-form :model="authForm" label-position="top">
+                <el-form-item label="用户名">
+                    <el-input v-model="authForm.username" placeholder="请输入用户名"></el-input>
+                </el-form-item>
+                <el-form-item label="密码">
+                    <el-input v-model="authForm.password" type="password" placeholder="请输入密码" show-password></el-input>
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <el-button @click="toggleAuthMode">{{ isLoginMode ? '去注册' : '去登录' }}</el-button>
+                <el-button type="primary" @click="handleAuth">{{ isLoginMode ? '登录' : '注册' }}</el-button>
+            </template>
+        </el-dialog>
+
+        <!-- 主布局 -->
+        <el-container v-if="isLoggedIn" style="height: 100%;">
+            <!-- 左侧边栏 -->
+            <el-aside :width="sidebarCollapsed ? '64px' : '260px'">
+                <div class="sidebar-header">
+                    <div class="logo">
+                        <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg"><path fill="var(--el-color-primary)" d="M864 256H160C106.912 256 64 298.912 64 352v448c0 53.088 42.912 96 96 96h704c53.088 0 96-42.912 96-96V352c0-53.088-42.912-96-96-96zM480 704a128 128 0 1 1 128-128c0 70.848-57.152 128-128 128zm32-256a128 128 0 1 1-128-128c70.848 0 128 57.152 128 128z"></path></svg>
+                        <span v-show="!sidebarCollapsed">DeepSeek</span>
+                    </div>
+                    <el-button :icon="sidebarCollapsed ? ElementPlusIconsVue.Expand : ElementPlusIconsVue.Fold" text circle @click="toggleSidebar"></el-button>
+                </div>
+
+                <div class="sidebar-content">
+                    <el-button class="new-chat-btn" :icon="ElementPlusIconsVue.Plus" @click="createNewConversation" :disabled="sidebarCollapsed">
+                        开启新对话
+                    </el-button>
+
+                    <el-scrollbar class="history-list">
+                        <el-menu :default-active="currentConversationId" @select="loadConversation" :collapse="sidebarCollapsed">
+                            <el-menu-item-group v-for="group in conversationGroups" :key="group.title" :title="group.title">
+                                <el-menu-item v-for="conversation in group.conversations" :key="conversation.id" :index="conversation.id.toString()">
+                                    <el-icon><el-icon-chat-dot-round /></el-icon>
+                                    <template #title>{{ conversation.title }}</template>
+                                </el-menu-item>
+                            </el-menu-item-group>
+                        </el-menu>
+                    </el-scrollbar>
+                </div>
+
+                <div class="sidebar-footer">
+                    <div class="user-profile">
+                        <el-avatar size="small" style="background-color: #facc15">🧐</el-avatar>
+                        <span v-show="!sidebarCollapsed">{{ currentUser.username }}</span>
+                    </div>
+                    <el-dropdown v-show="!sidebarCollapsed" trigger="click">
+                        <el-button :icon="ElementPlusIconsVue.MoreFilled" text circle></el-button>
+                        <template #dropdown>
+                            <el-dropdown-menu>
+                                <el-dropdown-item @click="logout">退出登录</el-dropdown-item>
+                            </el-dropdown-menu>
+                        </template>
+                    </el-dropdown>
+                </div>
+            </el-aside>
+
+            <!-- 右侧主聊天区 -->
+            <el-main class="chat-area">
+                <!-- 功能开关 -->
+                <div style="padding: 0 24px 16px 24px;">
+                    <el-check-tag :checked="features.deepThinking" @change="toggleFeature('deepThinking')" style="margin-right: 8px;">
+                        🧠 深度思考
+                    </el-check-tag>
+                    <el-check-tag :checked="features.webSearch" @change="toggleFeature('webSearch')">
+                        🌐 联网搜索
+                    </el-check-tag>
+                </div>
+
+                <!-- 聊天消息或欢迎界面 -->
+                <el-scrollbar v-if="currentMessages.length > 0" class="chat-messages" ref="messagesScrollbar">
+                    <div ref="messagesContainer">
+                        <div v-for="message in currentMessages" :key="message.id" class="message" :class="message.role">
+                            <div class="message-avatar">{{ message.role === 'user' ? '👤' : '🤖' }}</div>
+                            <div class="message-content" v-html="renderMarkdown(message.content)"></div>
+                        </div>
+                        <div v-if="isTyping" class="message assistant">
+                            <div class="message-avatar">🤖</div>
+                            <div class="message-content">
+                                <div class="typing-indicator"><span></span><span></span><span></span></div>
+                            </div>
+                        </div>
+                    </div>
+                </el-scrollbar>
+                <div v-else class="welcome-screen">
+                    <div class="welcome-content">
+                        <div class="logo">
+                            <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg"><path fill="var(--el-color-primary)" d="M864 256H160C106.912 256 64 298.912 64 352v448c0 53.088 42.912 96 96 96h704c53.088 0 96-42.912 96-96V352c0-53.088-42.912-96-96-96zM480 704a128 128 0 1 1 128-128c0 70.848-57.152 128-128 128zm32-256a128 128 0 1 1-128-128c70.848 0 128 57.152 128 128z"></path></svg>
+                        </div>
+                        <h1 style="font-size: 22px; font-weight: 500;">今天有什么可以帮到你?</h1>
+                    </div>
+                </div>
+
+                <!-- 输入区域 -->
+                <div class="input-wrapper">
+                    <div class="input-box">
+                        <el-input
+                                v-model="inputMessage"
+                                type="textarea"
+                                :autosize="{ minRows: 1, maxRows: 5 }"
+                                placeholder="给 DeepSeek 发送消息"
+                                @keydown.enter.prevent="handleSendMessage"
+                        ></el-input>
+                        <el-button
+                                class="send-button"
+                                type="primary"
+                                circle
+                                :icon="ElementPlusIconsVue.Promotion"
+                                @click="handleSendMessage"
+                                :disabled="!inputMessage.trim() || isTyping"
+                        ></el-button>
+                    </div>
+                </div>
+            </el-main>
+        </el-container>
+    </el-config-provider>
+</div>
+
+<script>
+    const { createApp, ref, computed, onMounted, nextTick } = Vue;
+    const { ElMessage } = ElementPlus;
+
+    // API服务类 (与原代码相同，此处省略以保持简洁)
+    class ApiService {
+        // ... (此处省略与原代码完全相同的 ApiService 类)
+        // 请将您原代码中的 ApiService 类完整地复制到这里
+    }
+    const apiService = new ApiService();
+
+    const app = createApp({
+        setup() {
+            // 响应式数据
+            const isLoggedIn = ref(false);
+            const showLoginDialog = ref(true);
+            const isLoginMode = ref(true);
+            const authForm = ref({ username: '', password: '' });
+            const currentUser = ref(null);
+            const sidebarCollapsed = ref(false);
+            const inputMessage = ref('');
+            const isTyping = ref(false);
+            const currentConversationId = ref(null);
+            const currentMessages = ref([]);
+            const conversations = ref([]);
+            const features = ref({ deepThinking: false, webSearch: false });
+
+            const messagesScrollbar = ref(null);
+            const messagesContainer = ref(null);
+
+            // 计算属性
+            const conversationGroups = computed(() => {
+                // ... (与原代码相同)
+            });
+
+            // 方法
+            const toggleAuthMode = () => {
+                isLoginMode.value = !isLoginMode.value;
+                authForm.value = { username: '', password: '' };
+            };
+
+            const handleAuth = async () => {
+                if (!authForm.value.username || !authForm.value.password) {
+                    ElMessage.warning('请输入用户名和密码');
+                    return;
+                }
+                try {
+                    let response;
+                    if (isLoginMode.value) {
+                        response = await apiService.login(authForm.value);
+                        currentUser.value = await apiService.getCurrentUser();
+                    } else {
+                        response = await apiService.register(authForm.value);
+                        currentUser.value = response;
+                        await apiService.login(authForm.value);
+                    }
+                    isLoggedIn.value = true;
+                    showLoginDialog.value = false;
+                    localStorage.setItem('user', JSON.stringify(currentUser.value));
+                    loadConversations();
+                    ElMessage.success(isLoginMode.value ? '登录成功' : '注册成功');
+                } catch (error) {
+                    ElMessage.error(error.message || '操作失败，请重试');
+                }
+            };
+
+            const logout = () => {
+                isLoggedIn.value = false;
+                showLoginDialog.value = true;
+                currentUser.value = null;
+                // ... (重置其他状态)
+                localStorage.removeItem('user');
+                apiService.setToken(null);
+            };
+
+            const toggleSidebar = () => sidebarCollapsed.value = !sidebarCollapsed.value;
+            const toggleFeature = (feature) => features.value[feature] = !features.value[feature];
+            const createNewConversation = () => {
+                currentConversationId.value = null;
+                currentMessages.value = [];
+            };
+
+            const loadConversation = async (conversationId) => {
+                if (!conversationId) return;
+                currentConversationId.value = conversationId;
+                // ... (加载消息的逻辑与原代码相同)
+            };
+
+            const loadConversations = async () => {
+                // ... (加载会话列表的逻辑与原代码相同)
+            };
+
+            const handleSendMessage = async () => {
+                if (!inputMessage.value.trim() || isTyping.value) return;
+                // ... (发送消息和处理流式响应的逻辑与原代码相同)
+                // 注意：在接收到新消息后，需要调用 scrollToBottom 方法
+            };
+
+            const scrollToBottom = () => {
+                nextTick(() => {
+                    if (messagesScrollbar.value && messagesContainer.value) {
+                        messagesScrollbar.value.setScrollTop(messagesContainer.value.scrollHeight);
+                    }
+                });
+            };
+
+            const renderMarkdown = (content) => {
+                return window.marked ? window.marked.parse(content) : content;
+            };
+
+            // 生命周期钩子
+            onMounted(async () => {
+                const savedUser = localStorage.getItem('user');
+                const savedToken = localStorage.getItem('token');
+                if (savedUser && savedToken) {
+                    try {
+                        currentUser.value = JSON.parse(savedUser);
+                        apiService.setToken(savedToken);
+                        await apiService.getCurrentUser();
+                        isLoggedIn.value = true;
+                        showLoginDialog.value = false;
+                        loadConversations();
+                    } catch (error) {
+                        localStorage.removeItem('user');
+                        localStorage.removeItem('token');
+                        apiService.setToken(null);
+                    }
+                }
+            });
+
+            return {
+                // ... (返回所有需要绑定的数据和方法)
+                isLoggedIn, showLoginDialog, isLoginMode, authForm, currentUser,
+                sidebarCollapsed, inputMessage, isTyping, currentConversationId,
+                currentMessages, conversationGroups, features,
+                messagesScrollbar, messagesContainer,
+                toggleAuthMode, handleAuth, logout, toggleSidebar, toggleFeature,
+                createNewConversation, loadConversation, handleSendMessage, renderMarkdown
+            };
+        }
+    });
+
+    // 挂载所有 Element Plus 图标
+    for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+        app.component(key, component);
+    }
+
+    app.use(ElementPlus);
+    app.mount('#app');
+
+</script>
+
+</body>
+</html>

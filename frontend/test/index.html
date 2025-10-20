@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepSeek ChatBox - 测试页面</title>
+    <!-- 引入 Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- 引入 Element Plus 样式 -->
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
+    <!-- 引入 Element Plus 组件库 -->
+    <script src="https://unpkg.com/element-plus"></script>
+    <!-- 引入 Element Plus 图标 -->
+    <script src="https://unpkg.com/@element-plus/icons-vue"></script>
+    <!-- 引入 Markdown 解析库 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
+    <!-- 引入 Axios -->
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+        }
+        .test-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        .test-title {
+            color: #409EFF;
+            margin-bottom: 16px;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .api-test {
+            margin-bottom: 16px;
+        }
+        .response-area {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 12px;
+            margin-top: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .error {
+            color: #f56c6c;
+        }
+        .success {
+            color: #67c23a;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="test-container">
+            <h1 style="text-align: center; color: #409EFF; margin-bottom: 30px;">
+                DeepSeek ChatBox API 测试
+            </h1>
+
+            <!-- 用户认证测试 -->
+            <div class="test-section">
+                <div class="test-title">用户认证测试</div>
+
+                <div class="api-test">
+                    <el-button type="primary" @click="testRegister" :loading="loading.register">
+                        测试用户注册
+                    </el-button>
+                    <el-button type="success" @click="testLogin" :loading="loading.login">
+                        测试用户登录
+                    </el-button>
+                    <el-button type="info" @click="testGetUserInfo" :loading="loading.userInfo">
+                        获取用户信息
+                    </el-button>
+                    <el-button type="warning" @click="clearAuth">
+                        清除认证
+                    </el-button>
+                </div>
+
+                <div v-if="responses.auth" class="response-area" :class="responses.auth.success ? 'success' : 'error'">
+                    {{ responses.auth.data }}
+                </div>
+            </div>
+
+            <!-- 会话管理测试 -->
+            <div class="test-section">
+                <div class="test-title">会话管理测试</div>
+
+                <div class="api-test">
+                    <el-button type="primary" @click="testGetConversations" :loading="loading.conversations">
+                        获取会话列表
+                    </el-button>
+                    <el-button type="success" @click="testCreateConversation" :loading="loading.createConv">
+                        创建新会话
+                    </el-button>
+                    <el-button type="info" @click="testGetMessages" :loading="loading.messages">
+                        获取消息列表
+                    </el-button>
+                </div>
+
+                <div v-if="responses.conversations" class="response-area" :class="responses.conversations.success ? 'success' : 'error'">
+                    {{ responses.conversations.data }}
+                            </div>
+                        </div>
+
+            <!-- 消息发送测试 -->
+            <div class="test-section">
+                <div class="test-title">消息发送测试</div>
+
+                <div class="api-test">
+                    <el-input
+                        v-model="testMessage"
+                        placeholder="输入测试消息"
+                        style="width: 300px; margin-right: 10px;"
+                    />
+                    <el-checkbox v-model="enableSearch">联网搜索</el-checkbox>
+                    <el-checkbox v-model="enableThinking">深度思考</el-checkbox>
+                    <el-button type="primary" @click="testSendMessage" :loading="loading.sendMessage">
+                        发送消息
+                    </el-button>
+                </div>
+                
+                <div v-if="responses.message" class="response-area" :class="responses.message.success ? 'success' : 'error'">
+                    {{ responses.message.data }}
+                </div>
+                </div>
+
+            <!-- 流式响应测试 -->
+            <div class="test-section">
+                <div class="test-title">流式响应测试</div>
+
+                <div class="api-test">
+                    <el-input
+                        v-model="streamMessage"
+                        placeholder="输入流式测试消息"
+                        style="width: 300px; margin-right: 10px;"
+                    />
+                    <el-button type="primary" @click="testStreamMessage" :loading="loading.stream">
+                        测试流式响应
+                    </el-button>
+                    <el-button type="danger" @click="stopStream">
+                        停止流式响应
+                    </el-button>
+                </div>
+
+                <div v-if="streamResponse" class="response-area">
+                    {{ streamResponse }}
+                    </div>
+                </div>
+                
+            <!-- 连接状态 -->
+            <div class="test-section">
+                <div class="test-title">连接状态</div>
+                <el-tag :type="connectionStatus.type">{{ connectionStatus.text }}</el-tag>
+                <p style="margin-top: 8px; color: #666;">
+                    后端地址: {{ apiBaseUrl }}
+                </p>
+                    </div>
+                </div>
+    </div>
+
+    <script>
+        const { createApp, ref, reactive } = Vue;
+        const { ElMessage } = ElementPlus;
+
+        const app = createApp({
+            setup() {
+                const apiBaseUrl = 'http://localhost:8000/api';
+                const token = ref(localStorage.getItem('token') || '');
+
+                const loading = reactive({
+                    register: false,
+                    login: false,
+                    userInfo: false,
+                    conversations: false,
+                    createConv: false,
+                    messages: false,
+                    sendMessage: false,
+                    stream: false
+                });
+
+                const responses = reactive({
+                    auth: null,
+                    conversations: null,
+                    message: null
+                });
+
+                const testMessage = ref('你好，请介绍一下你自己');
+                const streamMessage = ref('请写一首关于春天的诗');
+                const enableSearch = ref(false);
+                const enableThinking = ref(false);
+                const streamResponse = ref('');
+                const currentConversationId = ref(null);
+                const streamController = ref(null);
+
+                const connectionStatus = ref({
+                    type: 'info',
+                    text: '未连接'
+                });
+
+                // 检查连接状态
+                const checkConnection = async () => {
+                    try {
+                        const response = await axios.get(`${apiBaseUrl}/users/me`, {
+                            headers: token.value ? { Authorization: `Bearer ${token.value}` } : {}
+                        });
+                        connectionStatus.value = {
+                            type: 'success',
+                            text: '已连接'
+                        };
+                        return true;
+                    } catch (error) {
+                        connectionStatus.value = {
+                            type: 'danger',
+                            text: '连接失败'
+                        };
+                        return false;
+                    }
+                };
+
+                // 测试用户注册
+                const testRegister = async () => {
+                    loading.register = true;
+                    try {
+                        const response = await axios.post(`${apiBaseUrl}/users/register`, {
+                            username: `test_user_${Date.now()}`,
+                            password: '123456'
+                        });
+                        responses.auth = {
+                            success: true,
+                            data: `注册成功: ${JSON.stringify(response.data, null, 2)}`
+                        };
+                        ElMessage.success('注册成功');
+                    } catch (error) {
+                        responses.auth = {
+                            success: false,
+                            data: `注册失败: ${error.response?.data?.detail || error.message}`
+                        };
+                        ElMessage.error('注册失败');
+                    } finally {
+                        loading.register = false;
+                    }
+                };
+
+                // 测试用户登录
+                const testLogin = async () => {
+                    loading.login = true;
+                    try {
+                        const response = await axios.post(`${apiBaseUrl}/users/login`, {
+                            username: '123456',
+                            password: '123456'
+                        });
+                        token.value = response.data.access_token;
+                        localStorage.setItem('token', token.value);
+                        responses.auth = {
+                            success: true,
+                            data: `登录成功: ${JSON.stringify(response.data, null, 2)}`
+                        };
+                        ElMessage.success('登录成功');
+                        await checkConnection();
+                    } catch (error) {
+                        responses.auth = {
+                            success: false,
+                            data: `登录失败: ${error.response?.data?.detail || error.message}`
+                        };
+                        ElMessage.error('登录失败');
+                    } finally {
+                        loading.login = false;
+                    }
+                };
+
+                // 获取用户信息
+                const testGetUserInfo = async () => {
+                    loading.userInfo = true;
+                    try {
+                        const response = await axios.get(`${apiBaseUrl}/users/me`, {
+                            headers: { Authorization: `Bearer ${token.value}` }
+                        });
+                        responses.auth = {
+                            success: true,
+                            data: `用户信息: ${JSON.stringify(response.data, null, 2)}`
+                        };
+                    } catch (error) {
+                        responses.auth = {
+                            success: false,
+                            data: `获取用户信息失败: ${error.response?.data?.detail || error.message}`
+                        };
+                    } finally {
+                        loading.userInfo = false;
+                    }
+                };
+
+                // 获取会话列表
+                const testGetConversations = async () => {
+                    loading.conversations = true;
+                    try {
+                        const response = await axios.get(`${apiBaseUrl}/conversations/`, {
+                            headers: { Authorization: `Bearer ${token.value}` }
+                        });
+                        responses.conversations = {
+                            success: true,
+                            data: `会话列表: ${JSON.stringify(response.data, null, 2)}`
+                        };
+                    } catch (error) {
+                        responses.conversations = {
+                            success: false,
+                            data: `获取会话列表失败: ${error.response?.data?.detail || error.message}`
+                        };
+                    } finally {
+                        loading.conversations = false;
+                    }
+                };
+
+                // 创建会话
+                const testCreateConversation = async () => {
+                    loading.createConv = true;
+                    try {
+                        const response = await axios.post(`${apiBaseUrl}/conversations/`, {
+                            title: '测试会话'
+                        }, {
+                            headers: { Authorization: `Bearer ${token.value}` }
+                        });
+                        currentConversationId.value = response.data.id;
+                        responses.conversations = {
+                            success: true,
+                            data: `创建会话成功: ${JSON.stringify(response.data, null, 2)}`
+                        };
+                    } catch (error) {
+                        responses.conversations = {
+                            success: false,
+                            data: `创建会话失败: ${error.response?.data?.detail || error.message}`
+                        };
+                    } finally {
+                        loading.createConv = false;
+                    }
+                };
+
+                // 获取消息列表
+                const testGetMessages = async () => {
+                    if (!currentConversationId.value) {
+                        ElMessage.warning('请先创建会话');
+                        return;
+                    }
+                    loading.messages = true;
+                    try {
+                        const response = await axios.get(`${apiBaseUrl}/messages/conversation/${currentConversationId.value}`, {
+                            headers: { Authorization: `Bearer ${token.value}` }
+                        });
+                        responses.conversations = {
+                            success: true,
+                            data: `消息列表: ${JSON.stringify(response.data, null, 2)}`
+                        };
+                    } catch (error) {
+                        responses.conversations = {
+                            success: false,
+                            data: `获取消息列表失败: ${error.response?.data?.detail || error.message}`
+                        };
+                    } finally {
+                        loading.messages = false;
+                    }
+                };
+
+                // 发送消息
+                const testSendMessage = async () => {
+                    loading.sendMessage = true;
+                    try {
+                        const response = await axios.post(`${apiBaseUrl}/messages/send`, {
+                            content: testMessage.value,
+                            conversation_id: currentConversationId.value,
+                            enable_search: enableSearch.value,
+                            enable_thinking: enableThinking.value
+                        }, {
+                            headers: { Authorization: `Bearer ${token.value}` }
+                        });
+                        responses.message = {
+                            success: true,
+                            data: `发送消息成功: ${JSON.stringify(response.data, null, 2)}`
+                        };
+                    } catch (error) {
+                        responses.message = {
+                            success: false,
+                            data: `发送消息失败: ${error.response?.data?.detail || error.message}`
+                        };
+                    } finally {
+                        loading.sendMessage = false;
+                    }
+                };
+
+                // 测试流式响应
+                const testStreamMessage = async () => {
+                    loading.stream = true;
+                    streamResponse.value = '';
+
+                    try {
+                        const response = await fetch(`${apiBaseUrl}/messages/send`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token.value}`
+                            },
+                            body: JSON.stringify({
+                                content: streamMessage.value,
+                                conversation_id: currentConversationId.value,
+                                enable_search: enableSearch.value,
+                                enable_thinking: enableThinking.value
+                            })
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+
+                        const reader = response.body.getReader();
+                        const decoder = new TextDecoder();
+
+                        while (true) {
+                            const { done, value } = await reader.read();
+
+                            if (done) break;
+
+                            const chunk = decoder.decode(value);
+                            const lines = chunk.split('\n');
+
+                            for (const line of lines) {
+                                if (line.startsWith('data: ')) {
+                                    try {
+                                        const data = JSON.parse(line.slice(6));
+                                        if (data.type === 'content' || data.type === 'thinking') {
+                                            streamResponse.value += data.content || '';
+                                        }
+                                    } catch (e) {
+                                        console.error('解析流式数据失败:', e);
+                                    }
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        streamResponse.value = `流式响应失败: ${error.message}`;
+                    } finally {
+                        loading.stream = false;
+                    }
+                };
+
+                // 停止流式响应
+                const stopStream = () => {
+                    if (streamController.value) {
+                        streamController.value.abort();
+                        streamController.value = null;
+                    }
+                    loading.stream = false;
+                };
+
+                // 清除认证
+                const clearAuth = () => {
+                    token.value = '';
+                    localStorage.removeItem('token');
+                    responses.auth = null;
+                    responses.conversations = null;
+                    responses.message = null;
+                    streamResponse.value = '';
+                    currentConversationId.value = null;
+                    connectionStatus.value = {
+                        type: 'info',
+                        text: '未连接'
+                    };
+                    ElMessage.info('已清除认证信息');
+                };
+
+                // 初始化
+                checkConnection();
+
+                return {
+                    apiBaseUrl,
+                    loading,
+                    responses,
+                    testMessage,
+                    streamMessage,
+                    enableSearch,
+                    enableThinking,
+                    streamResponse,
+                    connectionStatus,
+                    testRegister,
+                    testLogin,
+                    testGetUserInfo,
+                    testGetConversations,
+                    testCreateConversation,
+                    testGetMessages,
+                    testSendMessage,
+                    testStreamMessage,
+                    stopStream,
+                    clearAuth
+                };
+            }
+        });
+
+        app.use(ElementPlus);
+        app.mount('#app');
+    </script>
+</body>
+</html>

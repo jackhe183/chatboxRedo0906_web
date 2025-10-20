@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>简单API测试</title>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background: #f0f9ff; border-color: #67c23a; }
+        .error { background: #fef0f0; border-color: #f56c6c; }
+        button { margin: 5px; padding: 8px 16px; }
+        pre { background: #f5f5f5; padding: 10px; border-radius: 3px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>DeepSeek ChatBox API 简单测试</h1>
+    
+    <div class="test">
+        <h3>1. 测试后端连接</h3>
+        <button onclick="testConnection()">测试连接</button>
+        <div id="connection-result"></div>
+    </div>
+
+    <div class="test">
+        <h3>2. 用户注册</h3>
+        <button onclick="testRegister()">注册测试用户</button>
+        <div id="register-result"></div>
+    </div>
+
+    <div class="test">
+        <h3>3. 用户登录</h3>
+        <button onclick="testLogin()">登录</button>
+        <div id="login-result"></div>
+    </div>
+
+    <div class="test">
+        <h3>4. 发送消息</h3>
+        <input type="text" id="messageInput" placeholder="输入消息" value="你好" style="width: 300px; padding: 5px;">
+        <button onclick="testSendMessage()">发送消息</button>
+        <div id="message-result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000/api';
+        let token = localStorage.getItem('token') || '';
+
+        function showResult(elementId, success, data) {
+            const element = document.getElementById(elementId);
+            element.className = success ? 'success' : 'error';
+            element.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+        }
+
+        async function testConnection() {
+            try {
+                const response = await axios.get(`${API_BASE}/users/me`, {
+                    headers: token ? { Authorization: `Bearer ${token}` } : {}
+                });
+                showResult('connection-result', true, response.data);
+            } catch (error) {
+                showResult('connection-result', false, {
+                    error: error.message,
+                    status: error.response?.status,
+                    data: error.response?.data
+                });
+            }
+        }
+
+        async function testRegister() {
+            try {
+                const response = await axios.post(`${API_BASE}/users/register`, {
+                    username: `test_${Date.now()}`,
+                    password: '123456'
+                });
+                showResult('register-result', true, response.data);
+            } catch (error) {
+                showResult('register-result', false, {
+                    error: error.message,
+                    status: error.response?.status,
+                    data: error.response?.data
+                });
+            }
+        }
+
+        async function testLogin() {
+            try {
+                const response = await axios.post(`${API_BASE}/users/login`, {
+                    username: 'test_user',
+                    password: '123456'
+                });
+                token = response.data.access_token;
+                localStorage.setItem('token', token);
+                showResult('login-result', true, response.data);
+            } catch (error) {
+                showResult('login-result', false, {
+                    error: error.message,
+                    status: error.response?.status,
+                    data: error.response?.data
+                });
+            }
+        }
+
+        async function testSendMessage() {
+            const message = document.getElementById('messageInput').value;
+            if (!message) {
+                alert('请输入消息');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/messages/send`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        content: message,
+                        enable_search: false,
+                        enable_thinking: false
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                // 处理流式响应
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let result = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                if (data.type === 'content') {
+                                    result += data.content || '';
+                                }
+                            } catch (e) {
+                                console.error('解析失败:', e);
+                            }
+                        }
+                    }
+                }
+
+                showResult('message-result', true, { message: result });
+            } catch (error) {
+                showResult('message-result', false, {
+                    error: error.message,
+                    status: error.response?.status
+                });
+            }
+        }
+
+        // 页面加载时测试连接
+        window.onload = testConnection;
+    </script>
+</body>
+</html>

@@ -1,0 +1,1425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepSeek ChatBox Clone</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
+    <style>
+        /* --- 全局和重置样式 --- */
+        :root {
+            --sidebar-bg: #f7f7f8;
+            --main-bg: #ffffff;
+            --border-color: #e5e7eb;
+            --text-primary: #1f2937;
+            --text-secondary: #6b7280;
+            --accent-blue: #4a72ff;
+            --accent-blue-hover: #4366e8;
+            --button-secondary-bg: #f3f4f6;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--main-bg);
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+
+        /* --- 主布局 --- */
+        .app-layout {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* --- 侧边栏 --- */
+        .sidebar {
+            width: 260px;
+            background-color: var(--sidebar-bg);
+            display: flex;
+            flex-direction: column;
+            padding: 12px;
+            box-sizing: border-box;
+            border-right: 1px solid var(--border-color);
+            transition: width 0.3s ease;
+            overflow: hidden;
+        }
+
+        .sidebar.collapsed {
+            width: 90px;
+            padding: 12px 8px;
+        }
+
+        .sidebar.collapsed .sidebar-content {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .sidebar.collapsed .sidebar-toggle {
+            transform: rotate(180deg);
+        }
+
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px;
+            margin-bottom: 16px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            font-size: 20px;
+            font-weight: bold;
+            color: var(--text-primary);
+        }
+
+        .logo svg {
+            width: 28px;
+            height: 28px;
+            margin-right: 8px;
+        }
+
+        .sidebar-toggle {
+            width: 24px;
+            height: 24px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .sidebar-content {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1; /* <-- 核心：让这个容器占据所有可用空间 */
+            overflow: hidden; /* <-- 防止内容溢出，确保滚动条在 history-list 内部 */
+        }
+
+
+        .new-chat-btn {
+            background-color: #fff;
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 10px;
+            width: 100%;
+            text-align: center;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin-bottom: 20px;
+        }
+
+        .new-chat-btn:hover {
+            background-color: #f3f4f6;
+        }
+
+        .history-list {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding-right: 8px; /* For scrollbar space */
+        }
+
+        .history-list::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .history-list::-webkit-scrollbar-thumb {
+            background-color: #ccc;
+            border-radius: 2px;
+        }
+
+        .history-group-title {
+            font-size: 12px;
+            color: var(--text-secondary);
+            padding: 8px;
+            margin-top: 12px;
+        }
+
+        .history-item {
+            padding: 10px 8px;
+            border-radius: 6px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .history-item:hover {
+            background-color: #e9e9eb;
+        }
+
+        .history-item {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .conversation-title {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .conversation-actions {
+            display: none;
+            gap: 4px;
+            margin-left: 8px;
+        }
+
+        .history-item:hover .conversation-actions {
+            display: flex;
+        }
+
+        .action-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            font-size: 12px;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+
+        .action-btn:hover {
+            opacity: 1;
+            background-color: rgba(0, 0, 0, 0.1);
+        }
+
+        .sidebar-footer {
+            padding: 12px 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 6px;
+            transition: background-color 0.2s;
+        }
+
+        .user-profile:hover {
+            background-color: rgba(0, 0, 0, 0.05);
+        }
+
+        .user-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .user-avatar {
+            width: 28px;
+            height: 28px;
+            background-color: #facc15;
+            border-radius: 50%;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+
+        .user-name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .more-options {
+            cursor: pointer;
+            font-weight: bold;
+            color: var(--text-secondary);
+        }
+
+        /* --- 聊天主区域 --- */
+        .chat-area {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .welcome-screen {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .welcome-content {
+            text-align: center;
+        }
+
+        .welcome-content .logo {
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .welcome-content h1 {
+            font-size: 22px;
+            font-weight: 500;
+            margin: 16px 0;
+            color: var(--text-primary);
+        }
+
+        .input-wrapper {
+            padding: 24px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .input-box {
+            width: 100%;
+            max-width: 768px;
+            position: relative;
+            /* --- 新增：将其变为垂直Flex容器 --- */
+            display: flex;
+            flex-direction: column;
+        }
+
+        /*.input-box {*/
+        /*    width: 100%;*/
+        /*    max-width: 768px;*/
+        /*    position: relative;*/
+        /*}*/
+
+        .input-box textarea {
+            width: 100%;
+            min-height: 52px;
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            padding: 16px 50px 16px 20px;
+            box-sizing: border-box;
+            font-size: 16px;
+            resize: none;
+            outline: none;
+            font-family: inherit;
+        }
+
+        .input-box textarea:focus {
+            border-color: var(--accent-blue);
+        }
+
+        .send-button {
+            position: absolute;
+            right: 12px;
+            bottom: 12px;
+            width: 32px;
+            height: 32px;
+            background-color: var(--accent-blue);
+            border: none;
+            border-radius: 50%;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .send-button:hover {
+            background-color: var(--accent-blue-hover);
+        }
+
+        /*.suggestion-buttons {*/
+        /*    position: absolute;*/
+        /*    bottom: -32px;*/
+        /*    left: 8px;*/
+        /*    display: flex;*/
+        /*    gap: 8px;*/
+        /*}*/
+
+        .suggestion-buttons {
+            /* --- 移除 position, bottom, left --- */
+            display: flex;
+            gap: 8px;
+            /* --- 新增：在输入框和按钮之间添加12px的间距 --- */
+            margin-top: 12px;
+        }
+
+        .suggestion-btn {
+            background: none;
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 4px 12px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+
+        /* --- 聊天消息样式 --- */
+        .chat-messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message {
+            display: flex;
+            gap: 12px;
+            max-width: 80%;
+        }
+
+        .message.user {
+            align-self: flex-end;
+            flex-direction: row-reverse;
+        }
+
+        .message.assistant {
+            align-self: flex-start;
+        }
+
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .message.user .message-avatar {
+            background-color: var(--accent-blue);
+            color: white;
+        }
+
+        .message.assistant .message-avatar {
+            background-color: #f3f4f6;
+            color: var(--text-primary);
+        }
+
+        .message-wrapper {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .message-content {
+            background-color: #f8f9fa;
+            padding: 12px 16px;
+            border-radius: 12px;
+            line-height: 1.5;
+            word-wrap: break-word;
+        }
+
+        .message-actions {
+            display: none;
+            gap: 4px;
+            margin-top: 4px;
+            align-self: flex-end;
+        }
+
+        .message:hover .message-actions {
+            display: flex;
+        }
+
+        .message.user .message-content {
+            background-color: var(--accent-blue);
+            color: white;
+        }
+
+        .message.assistant .message-content {
+            background-color: #f8f9fa;
+            color: var(--text-primary);
+        }
+
+        /*!* --- 功能开关样式 --- *!*/
+        /*.feature-toggles {*/
+        /*    display: flex;*/
+        /*    gap: 8px;*/
+        /*    margin-bottom: 16px;*/
+        /*    padding: 0 24px;*/
+        /*}*/
+
+        .feature-toggles {
+            display: flex;
+            gap: 8px;
+            padding: 0 24px;
+            /* --- 新增：为按钮和下方的输入框之间创建12px的间距 --- */
+            margin-bottom: 12px;
+            /* --- 新增：确保按钮在水平方向居中对齐 --- */
+            justify-content: center;
+        }
+
+        .toggle-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            background: white;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .toggle-btn.active {
+            background-color: var(--accent-blue);
+            color: white;
+            border-color: var(--accent-blue);
+        }
+
+        .toggle-btn:hover {
+            background-color: #f3f4f6;
+        }
+
+        .toggle-btn.active:hover {
+            background-color: var(--accent-blue-hover);
+        }
+
+        /* --- 登录界面样式 --- */
+        .login-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .login-form {
+            background: white;
+            padding: 32px;
+            border-radius: 12px;
+            width: 400px;
+            max-width: 90vw;
+        }
+
+        .login-form h2 {
+            text-align: center;
+            margin-bottom: 24px;
+            color: var(--text-primary);
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .btn-primary {
+            background-color: var(--accent-blue);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--accent-blue-hover);
+        }
+
+        .btn-secondary {
+            background-color: var(--button-secondary-bg);
+            color: var(--text-primary);
+        }
+
+        .btn-secondary:hover {
+            background-color: #e5e7eb;
+        }
+
+        /* --- 打字机效果 --- */
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+
+        .typing-indicator span {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: #999;
+            animation: typing 1.4s infinite ease-in-out;
+        }
+
+        .typing-indicator span:nth-child(1) {
+            animation-delay: -0.32s;
+        }
+
+        .typing-indicator span:nth-child(2) {
+            animation-delay: -0.16s;
+        }
+
+        @keyframes typing {
+            0%, 80%, 100% {
+                transform: scale(0.8);
+                opacity: 0.5;
+            }
+            40% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        /* --- 历史记录激活状态 --- */
+        .history-item.active {
+            background-color: var(--accent-blue);
+            color: white;
+        }
+
+        /* --- 响应式设计 --- */
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed;
+                left: 0;
+                top: 0;
+                height: 100vh;
+                z-index: 100;
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+            }
+
+            .sidebar.open {
+                transform: translateX(0);
+            }
+
+            .chat-area {
+                width: 100%;
+            }
+
+            .message {
+                max-width: 95%;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app" class="app-layout">
+        <!-- 登录界面 -->
+        <div v-if="!isLoggedIn" class="login-overlay">
+            <div class="login-form">
+                <h2>{{ isLoginMode ? '登录' : '注册' }}</h2>
+                <div class="form-group">
+                    <label>用户名</label>
+                    <input v-model="authForm.username" type="text" placeholder="请输入用户名">
+                </div>
+                <div class="form-group">
+                    <label>密码</label>
+                    <input v-model="authForm.password" type="password" placeholder="请输入密码">
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-primary" @click="handleAuth">
+                        {{ isLoginMode ? '登录' : '注册' }}
+                    </button>
+                    <button class="btn btn-secondary" @click="toggleAuthMode">
+                        {{ isLoginMode ? '注册' : '登录' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主应用界面 -->
+        <template v-else>
+            <!-- 左侧边栏 -->
+            <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
+                <div class="sidebar-header">
+                    <div class="logo">
+                        <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg"><path fill="#4a72ff" d="M864 256H160C106.912 256 64 298.912 64 352v448c0 53.088 42.912 96 96 96h704c53.088 0 96-42.912 96-96V352c0-53.088-42.912-96-96-96zM480 704a128 128 0 1 1 128-128c0 70.848-57.152 128-128 128zm32-256a128 128 0 1 1-128-128c70.848 0 128 57.152 128 128z"></path></svg>
+                        <span v-if="!sidebarCollapsed">ChatBox</span>
+                    </div>
+                    <div class="sidebar-toggle" @click="toggleSidebar">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M9 18L15 12L9 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="sidebar-content">
+                    <button class="new-chat-btn" @click="createNewConversation">
+                        + 开启新对话
+                    </button>
+
+                    <div class="history-list">
+                        <div v-for="group in conversationGroups" :key="group.title" class="history-group">
+                            <div class="history-group-title">{{ group.title }}</div>
+                            <div v-for="conversation in group.conversations"
+                                 :key="conversation.id"
+                                 class="history-item"
+                                 :class="{ active: currentConversationId === conversation.id }"
+                                 @click="loadConversation(conversation.id)"
+                                 @contextmenu.prevent="showConversationMenu($event, conversation)">
+                                <span class="conversation-title">{{ conversation.title }}</span>
+                                <div class="conversation-actions" v-if="!sidebarCollapsed">
+                                    <button @click.stop="editConversationTitle(conversation)" class="action-btn" title="编辑标题">✏️</button>
+                                    <button @click.stop="deleteConversation(conversation.id)" class="action-btn" title="删除会话">🗑️</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-footer">
+                    <div class="user-profile" @click="showUserMenu">
+                        <div class="user-avatar">🧐</div>
+                        <span v-if="!sidebarCollapsed" class="user-name">{{ currentUser.username }}</span>
+                    </div>
+                    <div v-if="!sidebarCollapsed" class="user-actions">
+                        <button @click="updateUserProfile" class="action-btn" title="更新资料">⚙️</button>
+                        <button @click="deleteAccount" class="action-btn" title="删除账户">🗑️</button>
+                        <button @click="logout" class="action-btn" title="退出登录">🚪</button>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- 右侧主聊天区 -->
+            <main class="chat-area">
+
+
+                <!-- 聊天消息区域 -->
+                <div v-if="currentMessages.length > 0" class="chat-messages" ref="messagesContainer">
+                    <div v-for="message in currentMessages" :key="message.id"
+                         class="message"
+                         :class="message.role">
+                        <div class="message-avatar">
+                            {{ message.role === 'user' ? '👤' : '🤖' }}
+                        </div>
+                        <div class="message-wrapper">
+                            <div class="message-content" v-html="renderMarkdown(message.content)"></div>
+                            <div class="message-actions" v-if="message.role === 'user'">
+                                <button @click="editMessageContent(message)" class="action-btn" title="编辑消息">✏️</button>
+                                <button @click="deleteMessage(message.id)" class="action-btn" title="删除消息">🗑️</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-if="isTyping" class="message assistant">
+                        <div class="message-avatar">🤖</div>
+                        <div class="message-content">
+                            <div class="typing-indicator">
+                                <span></span><span></span><span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 欢迎界面 -->
+                <div v-else class="welcome-screen">
+                    <div class="welcome-content">
+                        <div class="logo">
+                            <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg"><path fill="#4a72ff" d="M864 256H160C106.912 256 64 298.912 64 352v448c0 53.088 42.912 96 96 96h704c53.088 0 96-42.912 96-96V352c0-53.088-42.912-96-96-96zM480 704a128 128 0 1 1 128-128c0 70.848-57.152 128-128 128zm32-256a128 128 0 1 1-128-128c70.848 0 128 57.152 128 128z"></path></svg>
+                        </div>
+                        <h1>今天有什么可以帮到你?</h1>
+                    </div>
+                </div>
+
+                <!-- 功能开关 -->
+                <div class="feature-toggles">
+                    <button class="toggle-btn"
+                            :class="{ active: features.deepThinking }"
+                            @click="toggleFeature('deepThinking')">
+                        <span>🧠</span>
+                        <span>深度思考</span>
+                    </button>
+                    <button class="toggle-btn"
+                            :class="{ active: features.webSearch }"
+                            @click="toggleFeature('webSearch')">
+                        <span>🌐</span>
+                        <span>联网搜索</span>
+                    </button>
+                </div>
+
+                <!-- 输入区域 -->
+                <div class="input-wrapper">
+                    <div class="input-box">
+                        <textarea v-model="inputMessage"
+                                  @keydown.enter.prevent="handleSendMessage"
+                                  @input="autoResize"
+                                  placeholder="给 ChatBox 发送消息"
+                                  rows="1"
+                                  ref="messageInput"></textarea>
+                        <button class="send-button"
+                                @click="handleSendMessage"
+                                :disabled="!inputMessage.trim() || isTyping">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M7 11L12 6L17 11M12 18V7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+
+                    </div>
+                </div>
+            </main>
+        </template>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted, nextTick } = Vue;
+
+        // API配置
+        const API_BASE_URL = 'http://localhost:8000/api';
+
+        // --- ApiService 类保持不变 ---
+        class ApiService {
+            constructor() {
+                this.baseURL = API_BASE_URL;
+                this.token = localStorage.getItem('token');
+            }
+
+            setToken(token) {
+                this.token = token;
+                if (token) {
+                    localStorage.setItem('token', token);
+                } else {
+                    localStorage.removeItem('token');
+                }
+            }
+
+            async request(endpoint, options = {}) {
+                const url = `${this.baseURL}${endpoint}`;
+                const config = {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    },
+                    ...options
+                };
+
+                if (this.token) {
+                    config.headers['Authorization'] = `Bearer ${this.token}`;
+                }
+
+                try {
+                    const response = await fetch(url, config);
+
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    return await response.json();
+                } catch (error) {
+                    console.error('API请求失败:', error);
+                    throw error;
+                }
+            }
+
+            // 用户认证API
+            async register(userData) {
+                return this.request('/users/register', {
+                    method: 'POST',
+                    body: JSON.stringify(userData)
+                });
+            }
+
+            async login(userData) {
+                const response = await this.request('/users/login', {
+                    method: 'POST',
+                    body: JSON.stringify(userData)
+                });
+                this.setToken(response.access_token);
+                return response;
+            }
+
+            async getCurrentUser() {
+                return this.request('/users/me');
+            }
+
+            // 会话管理API
+            async getConversations() {
+                return this.request('/conversations/');
+            }
+
+            async createConversation(title = "新对话") {
+                return this.request('/conversations/', {
+                    method: 'POST',
+                    body: JSON.stringify({ title })
+                });
+            }
+
+            async getConversation(conversationId) {
+                return this.request(`/conversations/${conversationId}`);
+            }
+
+            async deleteConversation(conversationId) {
+                return this.request(`/conversations/${conversationId}`, {
+                    method: 'DELETE'
+                });
+            }
+
+            // 消息API
+            async getMessages(conversationId) {
+                return this.request(`/messages/conversation/${conversationId}`);
+            }
+
+            async sendMessage(messageData) {
+                const response = await fetch(`${this.baseURL}/messages/send`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.token}`
+                    },
+                    body: JSON.stringify(messageData)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                return response;
+            }
+
+            async deleteMessage(messageId) {
+                return this.request(`/messages/${messageId}`, {
+                    method: 'DELETE'
+                });
+            }
+
+            async updateMessageContent(messageId, content) {
+                return this.request(`/messages/${messageId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ content })
+                });
+            }
+
+            // 用户管理API
+            async updateUserInfo(userData) {
+                return this.request('/users/me', {
+                    method: 'PUT',
+                    body: JSON.stringify(userData)
+                });
+            }
+
+            async deleteAccount() {
+                return this.request('/users/me', {
+                    method: 'DELETE'
+                });
+            }
+
+            // 会话管理API
+            async updateConversationTitle(conversationId, title) {
+                return this.request(`/conversations/${conversationId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ title })
+                });
+            }
+        }
+
+        const apiService = new ApiService();
+
+        createApp({
+            setup() {
+                // --- 所有响应式数据保持不变 ---
+                const isLoggedIn = ref(false);
+                const isLoginMode = ref(true);
+                const authForm = ref({
+                    username: '',
+                    password: ''
+                });
+                const currentUser = ref(null);
+                const sidebarCollapsed = ref(false);
+                const inputMessage = ref('');
+                const isTyping = ref(false);
+                const currentConversationId = ref(null);
+                const currentMessages = ref([]);
+                const conversations = ref([]);
+                const features = ref({
+                    deepThinking: false,
+                    webSearch: false
+                });
+
+                // --- conversationGroups 计算属性保持不变 ---
+                const conversationGroups = computed(() => {
+                    const groups = {
+                        '今天': [],
+                        '7 天内': [],
+                        '30 天内': []
+                    };
+
+                    conversations.value.forEach(conv => {
+                        const now = new Date();
+                        const convDate = new Date(conv.updated_at);
+                        const diffDays = Math.floor((now - convDate) / (1000 * 60 * 60 * 24));
+
+                        if (diffDays === 0) {
+                            groups['今天'].push(conv);
+                        } else if (diffDays <= 7) {
+                            groups['7 天内'].push(conv);
+                        } else {
+                            groups['30 天内'].push(conv);
+                        }
+                    });
+
+                    return Object.entries(groups)
+                        .filter(([_, convs]) => convs.length > 0)
+                        .map(([title, conversations]) => ({ title, conversations }));
+                });
+
+
+                // --- 其他方法 (auth, logout, sidebar, etc.) 保持不变 ---
+                const toggleAuthMode = () => {
+                    isLoginMode.value = !isLoginMode.value;
+                    authForm.value = { username: '', password: '' };
+                };
+
+                const handleAuth = async () => {
+                    if (!authForm.value.username || !authForm.value.password) {
+                        alert('请输入用户名和密码');
+                        return;
+                    }
+
+                    try {
+                        let response;
+                        if (isLoginMode.value) {
+                            // 登录
+                            response = await apiService.login(authForm.value);
+                            currentUser.value = await apiService.getCurrentUser();
+                        } else {
+                            // 注册
+                            response = await apiService.register(authForm.value);
+                            currentUser.value = response;
+                            // 注册后自动登录
+                            await apiService.login(authForm.value);
+                        }
+
+                        isLoggedIn.value = true;
+                        localStorage.setItem('user', JSON.stringify(currentUser.value));
+                        loadConversations();
+
+                    } catch (error) {
+                        alert(error.message || '操作失败，请重试');
+                    }
+                };
+
+                const logout = () => {
+                    isLoggedIn.value = false;
+                    currentUser.value = null;
+                    currentConversationId.value = null;
+                    currentMessages.value = [];
+                    conversations.value = [];
+                    localStorage.removeItem('user');
+                    apiService.setToken(null);
+                };
+
+                const toggleSidebar = () => {
+                    sidebarCollapsed.value = !sidebarCollapsed.value;
+                };
+
+                const toggleFeature = (feature) => {
+                    features.value[feature] = !features.value[feature];
+                };
+
+                const createNewConversation = async () => {
+                    try {
+                        const response = await apiService.createConversation("新对话");
+                        currentConversationId.value = response.id;
+                        currentMessages.value = [];
+                        await loadConversations(); // 刷新会话列表
+                    } catch (error) {
+                        console.error('创建会话失败:', error);
+                        alert('创建会话失败: ' + error.message);
+                    }
+                };
+
+                const loadConversation = async (conversationId) => {
+                    currentConversationId.value = conversationId;
+                    try {
+                        const response = await apiService.getMessages(conversationId);
+                        currentMessages.value = response.messages || response;
+                        scrollToBottom();
+                    } catch (error) {
+                        console.error('加载消息失败:', error);
+                        alert('加载消息失败: ' + error.message);
+                    }
+                };
+
+                const loadConversations = async () => {
+                    try {
+                        const response = await apiService.getConversations();
+                        conversations.value = response.conversations || response;
+                    } catch (error) {
+                        console.error('加载会话失败:', error);
+                        alert('加载会话失败: ' + error.message);
+                    }
+                };
+
+                // 新增功能：更新会话标题
+                const updateConversationTitle = async (conversationId, newTitle) => {
+                    try {
+                        await apiService.updateConversationTitle(conversationId, newTitle);
+                        await loadConversations(); // 刷新会话列表
+                    } catch (error) {
+                        console.error('更新会话标题失败:', error);
+                        alert('更新会话标题失败: ' + error.message);
+                    }
+                };
+
+                // 新增功能：删除会话
+                const deleteConversation = async (conversationId) => {
+                    if (!confirm('确定要删除这个会话吗？')) return;
+
+                    try {
+                        await apiService.deleteConversation(conversationId);
+                        if (currentConversationId.value === conversationId) {
+                            currentConversationId.value = null;
+                            currentMessages.value = [];
+                        }
+                        await loadConversations(); // 刷新会话列表
+                    } catch (error) {
+                        console.error('删除会话失败:', error);
+                        alert('删除会话失败: ' + error.message);
+                    }
+                };
+
+                // 新增功能：编辑消息
+                const editMessage = async (messageId, newContent) => {
+                    try {
+                        await apiService.updateMessageContent(messageId, newContent);
+                        // 更新本地消息
+                        const message = currentMessages.value.find(m => m.id === messageId);
+                        if (message) {
+                            message.content = newContent;
+                        }
+                    } catch (error) {
+                        console.error('编辑消息失败:', error);
+                        alert('编辑消息失败: ' + error.message);
+                    }
+                };
+
+                // 新增功能：删除消息
+                const deleteMessage = async (messageId) => {
+                    if (!confirm('确定要删除这条消息吗？')) return;
+
+                    try {
+                        await apiService.deleteMessage(messageId);
+                        currentMessages.value = currentMessages.value.filter(m => m.id !== messageId);
+                    } catch (error) {
+                        console.error('删除消息失败:', error);
+                        alert('删除消息失败: ' + error.message);
+                    }
+                };
+
+                // 新增功能：更新用户信息
+                const updateUserProfile = async () => {
+                    const newUsername = prompt('请输入新的用户名:', currentUser.value.username);
+                    if (!newUsername || newUsername === currentUser.value.username) return;
+
+                    try {
+                        await apiService.updateUserInfo({ username: newUsername });
+                        currentUser.value.username = newUsername;
+                        localStorage.setItem('user', JSON.stringify(currentUser.value));
+                        alert('用户信息更新成功');
+                    } catch (error) {
+                        console.error('更新用户信息失败:', error);
+                        alert('更新用户信息失败: ' + error.message);
+                    }
+                };
+
+                // 新增功能：删除账户
+                const deleteAccount = async () => {
+                    if (!confirm('确定要删除账户吗？此操作不可恢复！')) return;
+
+                    try {
+                        await apiService.deleteAccount();
+                        logout();
+                        alert('账户已删除');
+                    } catch (error) {
+                        console.error('删除账户失败:', error);
+                        alert('删除账户失败: ' + error.message);
+                    }
+                };
+
+                // 新增功能：编辑会话标题
+                const editConversationTitle = async (conversation) => {
+                    const newTitle = prompt('请输入新的会话标题:', conversation.title);
+                    if (!newTitle || newTitle === conversation.title) return;
+
+                    await updateConversationTitle(conversation.id, newTitle);
+                };
+
+                // 新增功能：编辑消息内容
+                const editMessageContent = async (message) => {
+                    const newContent = prompt('请输入新的消息内容:', message.content);
+                    if (!newContent || newContent === message.content) return;
+
+                    await editMessage(message.id, newContent);
+                };
+
+                // 新增功能：显示会话菜单
+                const showConversationMenu = (event, conversation) => {
+                    // 可以在这里添加右键菜单逻辑
+                    console.log('右键点击会话:', conversation);
+                };
+
+                // 新增功能：显示用户菜单
+                const showUserMenu = () => {
+                    // 可以在这里添加用户菜单逻辑
+                    console.log('点击用户资料');
+                };
+
+                // V V V V V [START OF CHANGES] V V V V V
+
+                const handleSendMessage = async () => {
+                    if (!inputMessage.value.trim() || isTyping.value) return;
+
+                    const message = inputMessage.value.trim();
+                    inputMessage.value = '';
+
+                    // 添加用户消息
+                    currentMessages.value.push({
+                        id: Date.now(),
+                        role: 'user',
+                        content: message,
+                        created_at: new Date().toISOString()
+                    });
+
+                    // 添加一个空的 AI 消息占位符
+                    currentMessages.value.push({
+                        id: Date.now() + 1, // 临时ID
+                        role: 'assistant',
+                        content: '',
+                        created_at: new Date().toISOString()
+                    });
+
+                    isTyping.value = true;
+                    scrollToBottom();
+
+                    try {
+                        const messageData = {
+                            content: message,
+                            conversation_id: currentConversationId.value,
+                            enable_search: features.value.webSearch,
+                            enable_thinking: features.value.deepThinking
+                        };
+
+                        const response = await apiService.sendMessage(messageData);
+                        const reader = response.body.getReader();
+                        const decoder = new TextDecoder();
+
+                        let buffer = '';
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+
+                            buffer += decoder.decode(value, { stream: true });
+                            const lines = buffer.split('\n');
+                            buffer = lines.pop();
+
+                            for (const line of lines) {
+                                if (line.startsWith('data: ')) {
+                                    try {
+                                        const data = JSON.parse(line.slice(6));
+                                        // 直接在这里处理，不再需要 aiMessage 变量
+                                        handleStreamChunk(data);
+                                    } catch (e) {
+                                        console.error('解析流数据失败:', e);
+                                    }
+                                }
+                            }
+                        }
+
+                        await loadConversations();
+
+                    } catch (error) {
+                        console.error('发送消息失败:', error);
+                        // 更新最后一个消息（即AI占位符）为错误信息
+                        const lastMessage = currentMessages.value[currentMessages.value.length - 1];
+                        if (lastMessage && lastMessage.role === 'assistant') {
+                            lastMessage.content = '抱歉，发生了错误，请重试。';
+                        }
+                    } finally {
+                        isTyping.value = false;
+                    }
+                };
+
+                // 重新设计 handleStreamChunk，使其更健壮
+                const handleStreamChunk = (chunk) => {
+                    // 找到最后一个消息，它应该是我们的 AI 消息占位符
+                    const lastMessage = currentMessages.value[currentMessages.value.length - 1];
+                    if (!lastMessage || lastMessage.role !== 'assistant') {
+                        // 如果找不到，直接返回，避免出错
+                        return;
+                    }
+
+                    switch (chunk.type) {
+                        case 'conversation':
+                            // 如果是新对话，更新会话ID
+                            if (!currentConversationId.value) {
+                                currentConversationId.value = chunk.conversation_id;
+                            }
+                            break;
+
+                        case 'message':
+                            // 用后端返回的真实ID替换临时ID
+                            lastMessage.id = chunk.message_id;
+                            break;
+
+                        case 'content':
+                            isTyping.value = false; // 收到第一个内容块时，停止打字动画
+                            lastMessage.content += chunk.content;
+                            scrollToBottom();
+                            break;
+
+                        case 'tool_start': // 处理后端新增的搜索状态
+                            isTyping.value = false;
+                            lastMessage.content = `[${chunk.content}]`;
+                            break;
+
+                        case 'tool_end': // 处理后端新增的搜索状态
+                            lastMessage.content = ''; // 清空"正在搜索"，准备接收正式内容
+                            break;
+
+                        case 'thinking':
+                            // 可以选择性地显示思考过程
+                            // console.log('AI思考中:', chunk.content);
+                            break;
+
+                        case 'error':
+                            lastMessage.content = chunk.content;
+                            break;
+
+                        case 'done':
+                            isTyping.value = false;
+                            break;
+                    }
+                };
+
+                // ^ ^ ^ ^ ^ [END OF CHANGES] ^ ^ ^ ^ ^
+
+                // --- 剩余方法 (autoResize, scrollToBottom, etc.) 保持不变 ---
+                const autoResize = (event) => {
+                    const textarea = event.target;
+                    textarea.style.height = 'auto';
+                    textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+                };
+
+                const scrollToBottom = () => {
+                    nextTick(() => {
+                        const container = document.querySelector('.chat-messages');
+                        if (container) {
+                            container.scrollTop = container.scrollHeight;
+                        }
+                    });
+                };
+
+                const renderMarkdown = (content) => {
+                    if (typeof marked !== 'undefined') {
+                        // 增加对 [正在联网搜索...] 这类内容的特殊处理，避免被 markdown 解析
+                        if (content.startsWith('[') && content.endsWith(']')) {
+                            return `<p>${content}</p>`;
+                        }
+                        return marked.parse(content);
+                    }
+                    return content.replace(/\n/g, '<br>');
+                };
+
+
+                // --- onMounted 生命周期钩子保持不变 ---
+                onMounted(async () => {
+                    const savedUser = localStorage.getItem('user');
+                    const savedToken = localStorage.getItem('token');
+
+                    if (savedUser && savedToken) {
+                        try {
+                            currentUser.value = JSON.parse(savedUser);
+                            apiService.setToken(savedToken);
+
+                            // 验证token是否有效
+                            await apiService.getCurrentUser();
+                            isLoggedIn.value = true;
+                            loadConversations();
+                        } catch (error) {
+                            // Token无效，清除本地存储
+                            localStorage.removeItem('user');
+                            localStorage.removeItem('token');
+                            apiService.setToken(null);
+                        }
+                    }
+                });
+
+                // --- 返回值保持不变 ---
+                return {
+                    isLoggedIn,
+                    isLoginMode,
+                    authForm,
+                    currentUser,
+                    sidebarCollapsed,
+                    inputMessage,
+                    isTyping,
+                    currentConversationId,
+                    currentMessages,
+                    conversationGroups,
+                    features,
+                    toggleAuthMode,
+                    handleAuth,
+                    logout,
+                    toggleSidebar,
+                    toggleFeature,
+                    createNewConversation,
+                    loadConversation,
+                    loadConversations,
+                    handleSendMessage,
+                    autoResize,
+                    renderMarkdown,
+                    // 新增功能
+                    updateConversationTitle,
+                    deleteConversation,
+                    editMessage,
+                    deleteMessage,
+                    updateUserProfile,
+                    deleteAccount,
+                    editConversationTitle,
+                    editMessageContent,
+                    showConversationMenu,
+                    showUserMenu
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
